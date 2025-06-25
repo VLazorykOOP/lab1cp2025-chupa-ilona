@@ -1,0 +1,264 @@
+#include <iostream>
+#include <vector>
+#include <utility>
+#include <fstream>
+#include <cmath>
+#include <stdexcept>
+#include <string>
+#include <algorithm>
+#include <sstream>
+#include <filesystem>
+
+using namespace std;
+namespace fs = std::filesystem;
+
+double Tsm(double x, double y);
+
+void checkFileExists(const string& filename) {
+    if (!fs::exists(filename)) {
+        throw runtime_error("File not found: " + filename);
+    }
+}
+
+vector<pair<double, double>> loadData(const string& filename) {
+    checkFileExists(filename);
+    vector<pair<double, double>> data;
+    ifstream file(filename);
+    double x, y;
+    while (file >> x >> y) {
+        data.emplace_back(x, y);
+    }
+    return data;
+}
+
+double getFrom(const string& text) {
+    checkFileExists("dat3.dat");
+    ifstream file("dat3.dat");
+    string line;
+    while (getline(file, line)) {
+        istringstream iss(line);
+        string key;
+        double value;
+        if (iss >> key >> value && key == text) return value;
+    }
+    throw runtime_error("Key not found in dat3.dat: " + text);
+}
+
+double U(double x) {
+    try {
+        vector<pair<double, double>> data = loadData("dat1.dat");
+        if (x < -5 || x > 5) throw out_of_range("x must be in range [-5, 5]");
+        for (size_t i = 0; i < data.size() - 1; ++i) {
+            if (x >= data[i].first && x <= data[i + 1].first) {
+                double x0 = data[i].first, x1 = data[i + 1].first;
+                double y0 = data[i].second, y1 = data[i + 1].second;
+                return y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+            }
+        }
+        throw runtime_error("No interpolation range found for U(x)");
+    } catch (const exception& e) {
+        cerr << "Exception in U(x): " << e.what() << endl;
+        double discriminant = 100 - x * x;
+        if (discriminant <= 0) throw runtime_error("Invalid argument in U backup formula");
+        return log(x * sqrt(discriminant));
+    }
+}
+
+double T(double x) {
+    try {
+        vector<pair<double, double>> data = loadData("dat2.dat");
+        if (x < -10 || x > 10) throw out_of_range("x must be in range [-10, 10]");
+        for (size_t i = 0; i < data.size() - 1; ++i) {
+            if (x >= data[i].first && x <= data[i + 1].first) {
+                double x0 = data[i].first, x1 = data[i + 1].first;
+                double y0 = data[i].second, y1 = data[i + 1].second;
+                return y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+            }
+        }
+        throw runtime_error("No interpolation range found for T(x)");
+    } catch (const exception& e) {
+        cerr << "Exception in T(x): " << e.what() << endl;
+        double val = sin(2 * x);
+        val = max(-1.0, min(1.0, val));
+        return atan(acos(val));
+    }
+}
+
+double Qkn(double x, double y) {
+    try {
+        return x / U(x) + y * T(y);
+    } catch (const exception& e) {
+        throw runtime_error("Error in Qkn: " + string(e.what()));
+    }
+}
+
+double Qnk(double x, double y) {
+    try {
+        return x / U(x) + y * T(y);
+    } catch (const exception& e) {
+        throw runtime_error("Error in Qnk: " + string(e.what()));
+    }
+}
+
+double Rsv(double x, double y, double z) {
+    try {
+        vector<double> args = {x, y, z};
+        sort(args.begin(), args.end());
+        return args[0] * Qnk(args[0], args[1]) + args[0] * args[1] + args[2] * args[1];
+    } catch (const exception& e) {
+        throw runtime_error("Error in Rsv: " + string(e.what()));
+    }
+}
+
+double Min(double x, double y, double z, const string& text) {
+    try {
+        double u = getFrom(text);
+        return min({x, y, z, u});
+    } catch (const exception& e) {
+        throw runtime_error("Error in Min: " + string(e.what()));
+    }
+}
+
+double Stext(double min_val, const string& text) {
+    try {
+        if (min_val > 0) return getFrom(text) + min_val;
+        else return getFrom("get") + getFrom(text);
+    } catch (const exception& e) {
+        throw runtime_error("Error in Stext: " + string(e.what()));
+    }
+}
+
+double Ktext(double x, double y, double z, const string& text) {
+    try {
+        double min1 = min({x, y, x - z, y - z});
+        double min2 = min({x, y, z - x, z - y});
+        if (z < 0) return Stext(min1, text);
+        else return Stext(min2, text);
+    } catch (const exception& e) {
+        throw runtime_error("Error in Ktext: " + string(e.what()));
+    }
+}
+
+double Y(double x) {
+    try {
+        if (100 - x * x < 0) throw runtime_error("Invalid argument for sqrt in Y");
+        return log(x * sqrt(100 - x * x));
+    } catch (const exception& e) {
+        throw runtime_error("Error in Y: " + string(e.what()));
+    }
+}
+
+double Tsm(double x, double y) {
+    try {
+        if (4 * pow(y, 4) - pow(x, 2) < 0) throw runtime_error("Invalid argument for sqrt in Tsm");
+        return log2(5 * pow(x, 4) - 3 * pow(x, 2) + 2 * sqrt(4 * pow(y, 4) - pow(x, 2))) * Y(y);
+    } catch (const exception& e) {
+        throw runtime_error("Error in Tsm: " + string(e.what()));
+    }
+}
+
+double Mts(double x, double y) {
+    try {
+        double Tsm_val1 = Tsm(x, y);
+        double Tsm_val2 = Tsm(x, x);
+        return x * Tsm_val1 - y * Tsm_val2;
+    } catch (const exception& e) {
+        throw runtime_error("Error in Mts: " + string(e.what()));
+    }
+}
+
+double Mt1(double x, double y, double z) {
+    try {
+        return x * Mts(x, y) + z * Mts(z, y);
+    } catch (const exception& e) {
+        throw runtime_error("Error in Mt1: " + string(e.what()));
+    }
+}
+
+double func(double x, double y, double z) {
+    try {
+        return Rsv(x, y, z) + 0.5 * Rsv(y, z, x) * Rsv(z, x, y);
+    } catch (const exception& e) {
+        throw runtime_error("Error in func: " + string(e.what()));
+    }
+}
+
+double func_regr(double x, double y, double z, const string& text) {
+    try {
+        double r = func(x, y, z);
+        double m = Mt1(x, y, z);
+        double k = Ktext(x, y, z, text);
+        return 10 * k * pow(r, 2) - m * r;
+    } catch (const exception& e) {
+        throw runtime_error("Error in func_regr: " + string(e.what()));
+    }
+}
+
+void test() {
+    cout << "Running test cases...\n";
+
+    try {
+        double result1 = func_regr(1.0, 2.0, 3.0, "wet");
+        cout << "Test 1 passed. Result: " << result1 << endl;
+    } catch (const exception& e) {
+        cerr << "Test 1 failed: " << e.what() << endl;
+    }
+
+    try {
+        double u_test = U(10.0);
+        cout << "Test 2 passed. U(10.0): " << u_test << endl;
+    } catch (const exception& e) {
+        cout << "Test 2 failed. Exception: " << e.what() << endl;
+    }
+
+    try {
+        double t_test = T(15.0);
+        cout << "Test 3 passed. T(15.0): " << t_test << endl;
+    } catch (const exception& e) {
+        cout << "Test 3 failed. Exception: " << e.what() << endl;
+    }
+
+    try {
+        double val4 = getFrom("wet");
+        cout << "Test 4 passed. getFrom('wet') = " << val4 << endl;
+    } catch (const exception& e) {
+        cerr << "Test 4 failed: " << e.what() << endl;
+    }
+
+    try {
+        double val5 = getFrom("non_existing_key");
+        cerr << "Test 5 failed. Expected exception not thrown. Got: " << val5 << endl;
+    } catch (const exception& e) {
+        cout << "Test 5 passed. Caught expected error: " << e.what() << endl;
+    }
+
+    try {
+        double tsm6 = Tsm(100, 0);
+        cout << "Test 6 failed. Unexpected value: " << tsm6 << endl;
+    } catch (const exception& e) {
+        cout << "Test 6 passed. Caught expected error: " << e.what() << endl;
+    }
+
+    try {
+        double result7 = func_regr(1.0, 1.0, 1.0, "wet"); // Змінено вхідні дані
+        cout << "Test 7 passed. Result: " << result7 << endl;
+    } catch (const exception& e) {
+        cerr << "Test 7 failed: " << e.what() << endl;
+    }
+
+    cout << "Testing complete.\n";
+}
+
+int main() {
+    try {
+        checkFileExists("dat1.dat");
+        checkFileExists("dat2.dat");
+        checkFileExists("dat3.dat");
+
+        test();
+    } catch (const exception& e) {
+        cerr << "Critical error: " << e.what() << endl;
+    }
+
+    return 0;
+}
